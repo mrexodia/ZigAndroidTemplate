@@ -9,7 +9,7 @@ pub fn build(b: *std.Build) !void {
     // Default-initialize SDK
     const sdk = Sdk.init(b, null, .{});
     const mode = b.standardOptimizeOption(.{});
-    const android_version = b.option(Sdk.AndroidVersion, "android", "Select the android version, default is 'android5'") orelse .android5;
+    const android_version = b.option(Sdk.AndroidVersion, "android", "Select the android version, default is 'android13'") orelse .android13;
     const aaudio = b.option(bool, "aaudio", "Compile with support for AAudio, default is 'false'") orelse false;
     const opensl = b.option(bool, "opensl", "Compile with support for OpenSL ES, default is 'true'") orelse true;
 

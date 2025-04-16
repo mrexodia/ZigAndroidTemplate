@@ -11,7 +11,12 @@ const auto_detect = @import("build/auto-detect.zig");
 pub fn toolchainHostTag() []const u8 {
     const os = builtin.os.tag;
     const arch = builtin.cpu.arch;
-    return (comptime if (std.mem.eql(u8, @tagName(os), "macos")) "darwin" else @tagName(os)) ++ "-" ++ @tagName(arch);
+    if (std.mem.eql(u8, @tagName(os), "macos")) {
+        // NOTE: There is no darwin-aarch64 toolchain for Android currently
+        return "darwin-x86_64";
+    } else {
+        return @tagName(os) ++ "-" ++ @tagName(arch);
+    }
 }
 
 /// This file encodes a instance of an Android SDK interface.
@@ -108,8 +113,8 @@ pub fn init(b: *Build, user_config: ?UserConfig, toolchains: ToolchainVersions) 
 }
 
 pub const ToolchainVersions = struct {
-    build_tools_version: []const u8 = "33.0.1",
-    ndk_version: []const u8 = "25.1.8937393",
+    build_tools_version: []const u8 = "34.0.0",
+    ndk_version: []const u8 = "27.2.12479018",
 };
 
 pub const AndroidVersion = enum(u16) {
@@ -179,8 +184,7 @@ pub const AppConfig = struct {
     package_name: []const u8,
 
     /// The android version which is embedded in the manifset.
-    /// The default is Android 9, it's more than 4 years old by now and should be widespread enough to be a reasonable default.
-    target_version: AndroidVersion = .android9,
+    target_version: AndroidVersion = .android13,
 
     /// The resource directory that will contain the manifest and other app resources.
     /// This should be a distinct directory per app.
@@ -466,7 +470,7 @@ pub fn createApp(
             \\android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
         else
             \\
-            ;
+        ;
 
         writer.print(
             \\    <application android:debuggable="true" android:hasCode="{[hasCode]}" android:label="@string/app_name" {[theme]s} tools:replace="android:icon,android:theme,android:allowBackup,label" android:icon="@mipmap/icon" >
@@ -877,7 +881,7 @@ pub fn compileAppLibrary(
     exe.bundle_compiler_rt = true;
     exe.export_table = true;
 
-    exe.defineCMacro("ANDROID", null);
+    exe.root_module.addCMacro("ANDROID", "");
 
     exe.linkLibC();
     for (app_config.libraries) |lib| {
