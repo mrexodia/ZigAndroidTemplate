@@ -20,12 +20,12 @@ const ButtonData = struct {
 };
 
 pub fn timerInvoke(data: ?*anyopaque, jni: *android.JNI, method: android.jobject, args: android.jobjectArray) !android.jobject {
-    var btn_data = @ptrCast(*ButtonData, @alignCast(@alignOf(*ButtonData), data));
+    var btn_data: *ButtonData = @ptrCast(@alignCast(data));
     btn_data.count += 1;
     std.log.info("Running invoke!", .{});
     const method_name = try android.JNI.String.init(jni, try jni.callObjectMethod(method, "getName", "()Ljava/lang/String;", .{}));
     defer method_name.deinit(jni);
-    std.log.info("Method {}", .{std.unicode.fmtUtf16le(method_name.slice)});
+    std.log.info("Method {}", .{std.unicode.fmtUtf16Le(method_name.slice)});
 
     const length = try jni.invokeJni(.GetArrayLength, .{args});
     var i: i32 = 0;
@@ -33,7 +33,7 @@ pub fn timerInvoke(data: ?*anyopaque, jni: *android.JNI, method: android.jobject
         const object = try jni.invokeJni(.GetObjectArrayElement, .{ args, i });
         const string = try android.JNI.String.init(jni, try jni.callObjectMethod(object, "toString", "()Ljava/lang/String;", .{}));
         defer string.deinit(jni);
-        std.log.info("Arg {}: {}", .{ i, std.unicode.fmtUtf16le(string.slice) });
+        std.log.info("Arg {}: {}", .{ i, std.unicode.fmtUtf16Le(string.slice) });
 
         if (i == 0) {
             const Button = try jni.findClass("android/widget/Button");
@@ -61,10 +61,10 @@ pub const AndroidApp = struct {
 
     // This is needed because to run a callback on the UI thread Looper you must
     // react to a fd change, so we use a pipe to force it
-    pipe: [2]std.os.fd_t = undefined,
+    pipe: [2]std.posix.fd_t = undefined,
     // This is used with futexes so that runOnUiThread waits until the callback is completed
     // before returning.
-    uiThreadCondition: std.atomic.Atomic(u32) = std.atomic.Atomic(u32).init(0),
+    uiThreadCondition: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
     uiThreadLooper: *android.ALooper = undefined,
     uiThreadId: std.Thread.Id = undefined,
 
@@ -83,10 +83,10 @@ pub const AndroidApp = struct {
         // Initialize the variables we need to execute functions on the UI thread
         self.uiThreadLooper = android.ALooper_forThread().?;
         self.uiThreadId = std.Thread.getCurrentId();
-        self.pipe = try std.os.pipe();
+        self.pipe = try std.posix.pipe();
         android.ALooper_acquire(self.uiThreadLooper);
 
-        var native_activity = android.NativeActivity.init(self.activity);
+        const native_activity = android.NativeActivity.init(self.activity);
         var jni = native_activity.jni;
         self.uiJni = native_activity;
 
@@ -125,7 +125,7 @@ pub const AndroidApp = struct {
 
         const Instance = struct {
             fn callback(_: c_int, _: c_int, data: ?*anyopaque) callconv(.C) c_int {
-                const data_struct = @ptrCast(*Data, @alignCast(@alignOf(Data), data.?));
+                const data_struct: *Data = @ptrCast(@alignCast(data.?));
                 const self_ptr = data_struct.self;
                 defer self_ptr.allocator.destroy(data_struct);
 
@@ -143,7 +143,7 @@ pub const AndroidApp = struct {
             Instance.callback,
             data_ptr,
         );
-        std.debug.assert(try std.os.write(self.pipe[1], "hello") == 5);
+        std.debug.assert(try std.posix.write(self.pipe[1], "hello") == 5);
         if (result == -1) {
             return error.LooperError;
         }
@@ -156,7 +156,7 @@ pub const AndroidApp = struct {
     }
 
     pub fn deinit(self: *AndroidApp) void {
-        @atomicStore(bool, &self.running, false, .SeqCst);
+        @atomicStore(bool, &self.running, false, .seq_cst);
         if (self.thread) |thread| {
             thread.join();
             self.thread = null;

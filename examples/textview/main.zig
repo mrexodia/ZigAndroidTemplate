@@ -13,7 +13,6 @@ const c = android.egl.c;
 const app_log = std.log.scoped(.app);
 comptime {
     _ = android.ANativeActivity_createFunc;
-    _ = @import("root").log;
 }
 
 pub const AndroidApp = struct {
@@ -29,10 +28,10 @@ pub const AndroidApp = struct {
 
     // This is needed because to run a callback on the UI thread Looper you must
     // react to a fd change, so we use a pipe to force it
-    pipe: [2]std.os.fd_t = undefined,
+    pipe: [2]std.posix.fd_t = undefined,
     // This is used with futexes so that runOnUiThread waits until the callback is completed
     // before returning.
-    uiThreadCondition: std.atomic.Atomic(u32) = std.atomic.Atomic(u32).init(0),
+    uiThreadCondition: std.atomic.Value(u32) = std.atomic.Value(u32).init(0),
     uiThreadLooper: *android.ALooper = undefined,
     uiThreadId: std.Thread.Id = undefined,
 
@@ -49,7 +48,7 @@ pub const AndroidApp = struct {
         // Initialize the variables we need to execute functions on the UI thread
         self.uiThreadLooper = android.ALooper_forThread().?;
         self.uiThreadId = std.Thread.getCurrentId();
-        self.pipe = try std.os.pipe();
+        self.pipe = try std.posix.pipe();
         android.ALooper_acquire(self.uiThreadLooper);
 
         var native_activity = NativeActivity.init(self.activity);
@@ -91,7 +90,7 @@ pub const AndroidApp = struct {
 
         const Instance = struct {
             fn callback(_: c_int, _: c_int, data: ?*anyopaque) callconv(.C) c_int {
-                const data_struct = @ptrCast(*Data, @alignCast(@alignOf(Data), data.?));
+                const data_struct: *Data = @ptrCast(@alignCast(data.?));
                 const self_ptr = data_struct.self;
                 defer self_ptr.allocator.destroy(data_struct);
 
@@ -109,7 +108,7 @@ pub const AndroidApp = struct {
             Instance.callback,
             data_ptr,
         );
-        std.debug.assert(try std.os.write(self.pipe[1], "hello") == 5);
+        std.debug.assert(try std.posix.write(self.pipe[1], "hello") == 5);
         if (result == -1) {
             return error.LooperError;
         }
@@ -122,7 +121,7 @@ pub const AndroidApp = struct {
     }
 
     pub fn deinit(self: *AndroidApp) void {
-        @atomicStore(bool, &self.running, false, .SeqCst);
+        @atomicStore(bool, &self.running, false, .seq_cst);
         if (self.thread) |thread| {
             thread.join();
             self.thread = null;
